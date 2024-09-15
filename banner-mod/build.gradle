@@ -12,6 +12,20 @@ moduleDependencies(project, [
         "banner-translate"
 ])
 
+repositories {
+    maven {
+        url = "https://maven.enginehub.org/repo/"
+    }
+}
+
+dependencies {
+    modCompileOnly("com.sk89q.worldedit:worldedit-fabric-mc1.21:7.3.6")
+}
+
+dependencies {
+
+}
+
 processResources {
     duplicatesStrategy = DuplicatesStrategy.WARN
 }

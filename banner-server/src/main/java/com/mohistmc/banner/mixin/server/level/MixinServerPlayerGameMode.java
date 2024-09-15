@@ -2,9 +2,6 @@ package com.mohistmc.banner.mixin.server.level;
 
 import com.llamalad7.mixinextras.sugar.Local;
 import com.mohistmc.banner.injection.server.level.InjectionServerPlayerGameMode;
-import java.util.ArrayList;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 import net.minecraft.advancements.CriteriaTriggers;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -27,11 +24,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.CakeBlock;
-import net.minecraft.world.level.block.DoorBlock;
-import net.minecraft.world.level.block.TrapDoorBlock;
+import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
@@ -54,6 +47,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+import java.util.ArrayList;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Mixin(ServerPlayerGameMode.class)
 public abstract class MixinServerPlayerGameMode implements InjectionServerPlayerGameMode {
@@ -304,6 +301,7 @@ public abstract class MixinServerPlayerGameMode implements InjectionServerPlayer
             if (event.isCancelled()) {
                 if (isSwordNoBreak) {
                     cir.setReturnValue(false);
+                    return;
                 }
                 // Let the client know the block still exists
                 this.player.connection.send(new ClientboundBlockUpdatePacket(this.level, blockposition));

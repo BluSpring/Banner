@@ -3,7 +3,6 @@ package com.mohistmc.banner.mixin.world.food;
 import com.mohistmc.banner.asm.annotation.CreateConstructor;
 import com.mohistmc.banner.asm.annotation.ShadowConstructor;
 import com.mohistmc.banner.injection.world.food.InjectionFoodData;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.food.FoodData;
@@ -16,11 +15,7 @@ import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Constant;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyConstant;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -80,14 +75,13 @@ public abstract class MixinFoodData implements InjectionFoodData {
 
     @Redirect(method = "eat(Lnet/minecraft/world/food/FoodProperties;)V",
             at = @At(value = "INVOKE",target = "Lnet/minecraft/world/food/FoodData;add(IF)V"))
-    private void banner$foodLevelChange(FoodData instance, int i, float f) {
+    private void banner$foodLevelChange(FoodData instance, int nutrition, float saturation) {
         int oldFoodLevel = foodLevel;
-        FoodProperties foodInfo =  (FoodProperties)banner$foodStack.get(DataComponents.FOOD);
-        FoodLevelChangeEvent event = CraftEventFactory.callFoodLevelChangeEvent(entityhuman, foodInfo.nutrition() + oldFoodLevel, banner$foodStack);
+        FoodLevelChangeEvent event = CraftEventFactory.callFoodLevelChangeEvent(entityhuman, nutrition + oldFoodLevel, banner$foodStack);
 
         if (!event.isCancelled()) {
             duplicateCall.set(true);
-            this.add(event.getFoodLevel() - oldFoodLevel, foodInfo.saturation());
+            this.add(event.getFoodLevel() - oldFoodLevel, saturation);
         }
         // CraftBukkit end
     }
