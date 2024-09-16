@@ -1546,9 +1546,10 @@ public abstract class MixinServerGamePacketListenerImpl extends MixinServerCommo
             at = @At("HEAD"),
             cancellable = true)
     private void banner$checkReturnOfSession(ServerboundChatSessionUpdatePacket packet, CallbackInfo ci) {
-        if (true) {
-            ci.cancel();
-        }
+        // this makes it so chat doesn't work. don't do that.
+        //if (true) {
+            //ci.cancel();
+        //}
     }
 
     /**
