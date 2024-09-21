@@ -1,21 +1,12 @@
 package com.mohistmc.banner.mixin.server.commands;
 
-import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.commands.WorldBorderCommand;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.border.WorldBorder;
-import net.minecraft.world.phys.Vec2;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-
-import java.util.concurrent.atomic.AtomicReference;
 
 @Mixin(WorldBorderCommand.class)
 public class MixinWorldBorderCommand {
-
+    // BluSpring: Disable world border for Wraith
+/*
     private static AtomicReference<CommandSourceStack> banner$source = new AtomicReference<>();
 
     @Inject(method = "setDamageBuffer", at = @At("HEAD"))
@@ -94,4 +85,5 @@ public class MixinWorldBorderCommand {
     private static WorldBorder banner$resetBorder5(ServerLevel instance) {
         return banner$source.get().getLevel().getWorldBorder();
     }
+ */
 }

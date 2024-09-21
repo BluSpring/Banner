@@ -43,9 +43,11 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
 import net.minecraft.world.level.border.BorderChangeListener;
+import net.minecraft.world.level.portal.DimensionTransition;
 import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
+import net.minecraft.world.phys.Vec3;
 import org.bukkit.*;
 import org.bukkit.ban.IpBanList;
 import org.bukkit.ban.ProfileBanList;
@@ -998,7 +1000,7 @@ public class CraftPlayer extends CraftHumanEntity implements Player {
             entity.connection.teleport(to);
         } else {
             // The respawn reason should never be used if the passed location is non null.
-            this.server.getHandle().respawn(entity, toWorld, true, to, true, Entity.RemovalReason.CHANGED_DIMENSION, null);
+            this.getHandle().changeDimension(new DimensionTransition(toWorld, new Vec3(to.getX(), to.getY(), to.getZ()), Vec3.ZERO, to.getYaw(), to.getPitch(), DimensionTransition.DO_NOTHING));
         }
         return true;
     }

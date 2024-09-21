@@ -8,7 +8,7 @@
   },
   "injectors": {
     "maxShiftBy": 2,
-    "defaultRequire": 1
+    "defaultRequire": 0
   },
   "mixinPriority": 400,
   "mixins": [
