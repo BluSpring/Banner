@@ -946,9 +946,15 @@ public abstract class MixinServerGamePacketListenerImpl extends MixinServerCommo
     @Inject(method = "removePlayerFromWorld", at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/server/players/PlayerList;remove(Lnet/minecraft/server/level/ServerPlayer;)V"))
     private void banner$setQuitMsg(CallbackInfo ci) {
         String quitMessage = this.server.getPlayerList().bridge$quiltMsg();
+
+        if (quitMessage == null)
+            quitMessage = BukkitSnapshotCaptures.getQuitMessage(); // sometimes this might store it
+
         if ((quitMessage != null) && (!quitMessage.isEmpty())) {
             this.server.getPlayerList().broadcastMessage(CraftChatMessage.fromString(quitMessage));
         }
+
+        BukkitSnapshotCaptures.getQuitMessage(); // clear quit message, just in case
     }
 
     @Inject(method = "sendPlayerChatMessage", cancellable = true, at = @At("HEAD"))
