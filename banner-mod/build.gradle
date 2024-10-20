@@ -9,7 +9,8 @@ moduleDependencies(project, [
         "banner-plugin",
         "banner-stackdeobf",
         "banner-transitive-access-wideners",
-        "banner-translate"
+        "banner-translate",
+        "banner-compat"
 ])
 
 repositories {

@@ -64,9 +64,4 @@ public class BukkitCauldronHooks {
         }
     }
 
-    public static boolean lowerFillLevel(BlockState iblockdata, Level world, BlockPos blockposition, Entity entity, CauldronLevelChangeEvent.ChangeReason reason) {
-        int i = iblockdata.getValue(LayeredCauldronBlock.LEVEL) - 1;
-        BlockState iblockdata1 = i == 0 ? Blocks.CAULDRON.defaultBlockState() : iblockdata.setValue(LayeredCauldronBlock.LEVEL, i);
-        return changeLevel(world, blockposition, iblockdata1, entity, reason);
-    }
 }
