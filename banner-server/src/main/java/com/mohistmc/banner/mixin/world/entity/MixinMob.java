@@ -269,7 +269,7 @@ public abstract class MixinMob extends LivingEntity implements InjectionMob {
     }
 
     /*
-    @Redirect(method = "doHurtTarget", at = @At(value = "INVOKE", target = "ig"))
+    @Redirect(method = "doHurtTarget", at = @At(value = "INVOKE", target = "s"))
     public void banner$attackCombust(Entity entity, int seconds) {
         EntityCombustByEntityEvent combustEvent = new EntityCombustByEntityEvent(this.getBukkitEntity(), entity.getBukkitEntity(), seconds);
         org.bukkit.Bukkit.getPluginManager().callEvent(combustEvent);

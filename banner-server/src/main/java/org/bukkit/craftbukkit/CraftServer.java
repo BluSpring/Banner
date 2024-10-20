@@ -278,7 +278,7 @@ public final class CraftServer implements Server {
     private CraftIconCache icon;
     private boolean overrideAllCommandBlockCommands = false;
     public boolean ignoreVanillaPermissions = false;
-    private final List<CraftPlayer> playerView;
+    private List<CraftPlayer> playerView;
     public int reloadCount;
     public Set<String> activeCompatibilities = Collections.emptySet();
 
@@ -590,6 +590,14 @@ public final class CraftServer implements Server {
 
     @Override
     public List<CraftPlayer> getOnlinePlayers() {
+        // Banner start - refresh online players
+        this.playerView = Collections.unmodifiableList(Lists.transform(playerList.players, new Function<ServerPlayer, CraftPlayer>() {
+            @Override
+            public CraftPlayer apply(ServerPlayer player) {
+                return player.getBukkitEntity();
+            }
+        }));
+        // Banner end
         return this.playerView;
     }
 
@@ -1165,6 +1173,9 @@ public final class CraftServer implements Server {
         ServerLevel internal = new ServerLevel(console, console.executor, worldSession, worlddata, worldKey, worlddimension, getServer().progressListenerFactory.create(11),
                 worlddata.isDebugWorld(), j, creator.environment() == Environment.NORMAL ? list : ImmutableList.of(), true, console.overworld().getRandomSequences());
 
+        name = name.contains("DIM") ? name : name.toLowerCase(java.util.Locale.ENGLISH);
+        internal.banner$setGenerator(generator);
+        internal.banner$setBiomeProvider(biomeProvider);
         if (!(this.worlds.containsKey(name.toLowerCase(java.util.Locale.ENGLISH)))) {
             return null;
         }

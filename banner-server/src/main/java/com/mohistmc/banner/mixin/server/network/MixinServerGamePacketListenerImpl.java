@@ -1158,7 +1158,23 @@ public abstract class MixinServerGamePacketListenerImpl extends MixinServerCommo
             this.chat(s, playerchatmessage, true);
         }
         // this.server.getPlayerList().broadcastChatMessage(playerchatmessage, this.player, ChatMessageType.bind(ChatMessageType.CHAT, (Entity) this.player));
-        this.detectRateSpam();
+        this.detectRateSpam(s);
+    }
+
+    @Override
+    public void detectRateSpam(String s) {
+        boolean counted = true;
+        for (String exclude : org.spigotmc.SpigotConfig.spamExclusions) {
+            if (exclude != null && s.startsWith(exclude)) {
+                counted = false;
+                break;
+            }
+        }
+        // Spigot end
+        this.chatSpamTickCount += 20;
+        if (counted && this.chatSpamTickCount > 200 && !this.server.getPlayerList().isOp(this.player.getGameProfile())) {
+            this.disconnect(Component.translatable("disconnect.spam"));
+        }
     }
 
     @Inject(method = "handlePlayerCommand", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;resetLastActionTime()V"))
@@ -1546,16 +1562,6 @@ public abstract class MixinServerGamePacketListenerImpl extends MixinServerCommo
                 CraftEventFactory.callRecipeBookClickEvent(this.player, recipe, packet.isShiftDown());
         banner$recipeClickEvent.set(event);
         // Cast to keyed should be safe as the recipe will never be a MerchantRecipe.
-    }
-
-    @Inject(method = "handleChatSessionUpdate",
-            at = @At("HEAD"),
-            cancellable = true)
-    private void banner$checkReturnOfSession(ServerboundChatSessionUpdatePacket packet, CallbackInfo ci) {
-        // this makes it so chat doesn't work. don't do that.
-        //if (true) {
-            //ci.cancel();
-        //}
     }
 
     /**

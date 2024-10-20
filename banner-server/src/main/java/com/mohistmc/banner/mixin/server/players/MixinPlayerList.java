@@ -422,7 +422,7 @@ public abstract class MixinPlayerList implements InjectionPlayerList {
         this.sendAllPlayerInfo(playerIn);
         playerIn.onUpdateAbilities();
         playerIn.triggerDimensionChangeTriggers(((CraftWorld) fromWorld).getHandle());
-        if (fromWorld != location.getWorld()) {
+        if (fromWorld != playerIn.serverLevel()) {
             PlayerChangedWorldEvent event = new PlayerChangedWorldEvent(playerIn.getBukkitEntity(), fromWorld);
             Bukkit.getPluginManager().callEvent(event);
         }

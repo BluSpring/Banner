@@ -1000,6 +1000,7 @@ public class CraftPlayer extends CraftHumanEntity implements Player {
             entity.connection.teleport(to);
         } else {
             // The respawn reason should never be used if the passed location is non null.
+            // Banner - fix #321
             this.getHandle().changeDimension(new DimensionTransition(toWorld, new Vec3(to.getX(), to.getY(), to.getZ()), Vec3.ZERO, to.getYaw(), to.getPitch(), DimensionTransition.DO_NOTHING));
         }
         return true;
