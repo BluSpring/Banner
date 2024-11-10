@@ -5,13 +5,7 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.logging.Level;
 
 /**
@@ -248,6 +242,10 @@ public class PermissibleBase implements Permissible {
     @NotNull
     public Set<PermissionAttachmentInfo> getEffectivePermissions() {
         return new HashSet<PermissionAttachmentInfo>(permissions.values());
+    }
+
+    public Permissible banner$getParent() {
+        return parent;
     }
 
     private static class RemoveAttachmentRunnable implements Runnable {
