@@ -10,6 +10,7 @@ import it.unimi.dsi.fastutil.shorts.ShortArraySet;
 import it.unimi.dsi.fastutil.shorts.ShortSet;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.chat.ComponentSerializer;
+import net.minecraft.Util;
 import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -149,7 +150,14 @@ public class CraftPlayer extends CraftHumanEntity implements Player {
 
     @Override
     public boolean isOp() {
-        return this.server.getHandle().isOp(this.getProfile());
+        return this.server.getHandle().isOp(this.getProfile()) && Util.make(() -> {
+            var opInfo = this.server.getHandle().getOps().get(this.getProfile());
+
+            if (opInfo == null)
+                return false;
+            else
+                return opInfo.getLevel() >= 3;
+        });
     }
 
     @Override
