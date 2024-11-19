@@ -42,7 +42,6 @@ import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeMap;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.food.FoodProperties;
@@ -67,11 +66,7 @@ import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
 import org.slf4j.Logger;
-import org.spongepowered.asm.mixin.Final;
-import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Overwrite;
-import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
@@ -598,7 +593,8 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
     @Override
     public boolean damageEntity0(DamageSource damagesource, float f) {
         if (!this.isInvulnerableTo(damagesource)) {
-            final boolean human = ((LivingEntity) (Object) this) instanceof Player;
+            LivingEntity livingEntity = (LivingEntity) (Object) this;
+            final boolean human = livingEntity instanceof Player;
             if (f <= 0) return banner$damageResult = true;
             float originalDamage = f;
             Function<Double, Double> hardHat = new Function<>() {
@@ -636,7 +632,7 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
                 @Override
                 public Double apply(Double f) {
                     if (!damagesource.is(DamageTypeTags.BYPASSES_EFFECTS) && hasEffect(MobEffects.DAMAGE_RESISTANCE) && !damagesource.is(DamageTypeTags.BYPASSES_RESISTANCE)) {
-                        int i = (((LivingEntity) (Object) this).getEffect(MobEffects.DAMAGE_RESISTANCE).getAmplifier() + 1) * 5;
+                        int i = (livingEntity.getEffect(MobEffects.DAMAGE_RESISTANCE).getAmplifier() + 1) * 5;
                         int j = 25 - i;
                         float f1 = f.floatValue() * (float) j;
                         return -(f - (f1 / 25.0F));
@@ -678,8 +674,8 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
             if (event.getDamage(EntityDamageEvent.DamageModifier.RESISTANCE) < 0) {
                 float f3 = (float) -event.getDamage(EntityDamageEvent.DamageModifier.RESISTANCE);
                 if (f3 > 0.0F && f3 < 3.4028235E37F) {
-                    if (((LivingEntity) (Object) this) instanceof ServerPlayer) {
-                        ((ServerPlayer) (Object) this).awardStat(Stats.DAMAGE_RESISTED, Math.round(f3 * 10.0F));
+                    if (livingEntity instanceof ServerPlayer serverPlayer) {
+                        serverPlayer.awardStat(Stats.DAMAGE_RESISTED, Math.round(f3 * 10.0F));
                     } else if (damagesource.getEntity() instanceof ServerPlayer) {
                         ((ServerPlayer) damagesource.getEntity()).awardStat(Stats.DAMAGE_DEALT_RESISTED, Math.round(f3 * 10.0F));
                     }
@@ -712,8 +708,8 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
             this.setAbsorptionAmount(Math.max(this.getAbsorptionAmount() - absorptionModifier, 0.0F));
             float f2 = absorptionModifier;
 
-            if (f2 > 0.0F && f2 < 3.4028235E37F && ((LivingEntity) (Object) this) instanceof Player) {
-                ((Player) (Object) this).awardStat(Stats.DAMAGE_ABSORBED, Math.round(f2 * 10.0F));
+            if (f2 > 0.0F && f2 < 3.4028235E37F && livingEntity instanceof Player player) {
+                player.awardStat(Stats.DAMAGE_ABSORBED, Math.round(f2 * 10.0F));
             }
             if (f2 > 0.0F && f2 < 3.4028235E37F) {
                 Entity entity = damagesource.getEntity();
@@ -727,9 +723,9 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
             if (f > 0 || !human) {
                 if (human) {
                     // PAIL: Be sure to drag all this code from the EntityHuman subclass each update.
-                    ((Player) (Object) this).causeFoodExhaustion(damagesource.getFoodExhaustion(), org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.DAMAGED); // CraftBukkit - EntityExhaustionEvent
+                    ((Player) livingEntity).causeFoodExhaustion(damagesource.getFoodExhaustion(), org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.DAMAGED); // CraftBukkit - EntityExhaustionEvent
                     if (f < 3.4028235E37F) {
-                        ((Player) (Object) this).awardStat(Stats.DAMAGE_TAKEN, Math.round(f * 10.0F));
+                        ((Player) livingEntity).awardStat(Stats.DAMAGE_TAKEN, Math.round(f * 10.0F));
                     }
                 }
                 // CraftBukkit end
@@ -747,11 +743,11 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
             } else {
                 // Duplicate triggers if blocking
                 if (event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING) < 0) {
-                    if (((LivingEntity) (Object) this)instanceof ServerPlayer) {
-                        CriteriaTriggers.ENTITY_HURT_PLAYER.trigger(((ServerPlayer) (Object) this), damagesource, f, originalDamage, true);
+                    if (livingEntity instanceof ServerPlayer) {
+                        CriteriaTriggers.ENTITY_HURT_PLAYER.trigger(((ServerPlayer) livingEntity), damagesource, f, originalDamage, true);
                         f2 = (float) -event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING);
                         if (f2 > 0.0F && f2 < 3.4028235E37F) {
-                            ((ServerPlayer) (Object) this).awardStat(Stats.DAMAGE_BLOCKED_BY_SHIELD, Math.round(originalDamage * 10.0F));
+                            ((ServerPlayer) livingEntity).awardStat(Stats.DAMAGE_BLOCKED_BY_SHIELD, Math.round(originalDamage * 10.0F));
                         }
                     }
 
