@@ -691,6 +691,11 @@ public abstract class MixinServerGamePacketListenerImpl extends MixinServerCommo
 
                             this.player.move(MoverType.PLAYER, new Vec3(d7, d8, d9));
                             this.player.onGround = packetplayinflying.isOnGround();
+                            // Paper start - prevent position desync
+                            if (this.awaitingPositionFromClient != null) {
+                                return; // ... thanks Mojang for letting move calls teleport across dimensions.
+                            }
+                            // Paper end - prevent position desync
                             double d12 = d8;
 
                             d7 = d0 - this.player.getX();
