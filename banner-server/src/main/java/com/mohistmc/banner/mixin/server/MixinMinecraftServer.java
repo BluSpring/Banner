@@ -22,24 +22,15 @@ import joptsimple.OptionSet;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.minecraft.CrashReport;
 import net.minecraft.ReportedException;
-import net.minecraft.SystemReport;
 import net.minecraft.Util;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.LayeredRegistryAccess;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.protocol.game.ClientboundSetTimePacket;
 import net.minecraft.network.protocol.status.ServerStatus;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.RegistryLayer;
-import net.minecraft.server.ServerLinks;
-import net.minecraft.server.ServerTickRateManager;
-import net.minecraft.server.Services;
-import net.minecraft.server.TickTask;
-import net.minecraft.server.WorldLoader;
-import net.minecraft.server.WorldStem;
+import net.minecraft.server.*;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -51,7 +42,6 @@ import net.minecraft.server.packs.repository.PackRepository;
 import net.minecraft.server.players.PlayerList;
 import net.minecraft.util.TimeUtil;
 import net.minecraft.util.Unit;
-import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.util.thread.ReentrantBlockableEventLoop;
 import net.minecraft.world.RandomSequences;
 import net.minecraft.world.level.ChunkPos;
@@ -77,33 +67,14 @@ import org.bukkit.plugin.PluginLoadOrder;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
 import org.spigotmc.WatchdogThread;
-import org.spongepowered.asm.mixin.Final;
-import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Mutable;
-import org.spongepowered.asm.mixin.Overwrite;
-import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Constant;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyConstant;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.*;
+import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.Proxy;
-import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Queue;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
 import java.util.logging.Level;
@@ -150,6 +121,11 @@ public abstract class MixinMinecraftServer extends ReentrantBlockableEventLoop<T
     @Shadow private long nextTickTimeNanos;
     @Mutable
     @Shadow @Final private static long OVERLOADED_THRESHOLD_NANOS;
+
+    @Shadow private boolean mayHaveDelayedTasks;
+    @Shadow private long delayedTasksMaxNextTickTimeNanos;
+
+    @Shadow public abstract void managedBlock(BooleanSupplier booleanSupplier);
 
     // CraftBukkit start
     public WorldLoader.DataLoadContext worldLoader;
@@ -585,7 +561,30 @@ public abstract class MixinMinecraftServer extends ReentrantBlockableEventLoop<T
 
     @Inject(method = "haveTime", cancellable = true, at = @At("HEAD"))
     private void banner$forceAheadOfTime(CallbackInfoReturnable<Boolean> cir) {
+        // Paper
+        if (isOversleep) {
+            cir.setReturnValue(banner$canOversleep());
+            return;
+        }
+
         if (this.forceTicks) cir.setReturnValue(true);
+    }
+
+    // Paper
+    @Unique boolean isOversleep = false;
+
+    @Unique
+    private boolean banner$canOversleep() {
+        return this.mayHaveDelayedTasks && Util.getNanos() < this.delayedTasksMaxNextTickTimeNanos;
+    }
+
+    @Inject(method = "tickServer", at = @At(value = "INVOKE", target = "Lnet/minecraft/Util;getNanos()J", ordinal = 0, shift = At.Shift.AFTER))
+    private void banner$checkOversleep(BooleanSupplier booleanSupplier, CallbackInfo ci) {
+        isOversleep = true;
+        this.managedBlock(() -> {
+            return !this.banner$canOversleep();
+        });
+        isOversleep = false;
     }
 
     @Inject(method = "tickServer", at = @At("RETURN"))
