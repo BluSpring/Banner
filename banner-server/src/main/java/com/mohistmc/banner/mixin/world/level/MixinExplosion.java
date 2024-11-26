@@ -1,5 +1,7 @@
 package com.mohistmc.banner.mixin.world.level;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mohistmc.banner.injection.world.level.InjectionExplosion;
 import com.mojang.datafixers.util.Pair;
 import io.izzel.arclight.mixin.Decorate;
@@ -31,7 +33,6 @@ import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
@@ -122,13 +123,13 @@ public abstract class MixinExplosion implements InjectionExplosion {
         DecorationOps.callsite().invoke(instance, level, pos, explosion, biConsumer);
     }
 
-    @Redirect(method = "finalizeExplosion", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;setBlockAndUpdate(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Z"))
-    private boolean banner$blockIgnite(Level instance, BlockPos blockPos, BlockState blockState) throws Throwable {
+    @WrapOperation(method = "finalizeExplosion", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;setBlockAndUpdate(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Z"))
+    private boolean banner$blockIgnite(Level instance, BlockPos blockPos, BlockState blockState, Operation<Boolean> original) throws Throwable {
         BlockIgniteEvent event = CraftEventFactory.callBlockIgniteEvent(this.level, blockPos, (Explosion) (Object) this);
         if (event.isCancelled()) {
             return false;
         }
-        return (boolean) DecorationOps.callsite().invoke(instance, blockPos, blockState);
+        return original.call(instance, blockPos, blockState);
     }
 
     @Inject(method = "addOrAppendStack", cancellable = true, at = @At("HEAD"))
