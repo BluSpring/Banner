@@ -121,6 +121,7 @@ public abstract class MixinPlayerList implements InjectionPlayerList {
 
     @Shadow public abstract void sendPlayerPermissionLevel(ServerPlayer serverPlayer);
 
+    @Shadow @Final private Map<UUID, PlayerAdvancements> advancements;
     private CraftServer cserver;
 
     @Inject(method = "<init>", at = @At(value = "FIELD", target = "Lnet/minecraft/server/players/PlayerList;bans:Lnet/minecraft/server/players/UserBanList;"))
@@ -547,7 +548,7 @@ public abstract class MixinPlayerList implements InjectionPlayerList {
         if (playerAdvancements == null) {
             Path path = this.server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR).resolve("" + uUID + ".json");
             playerAdvancements = new PlayerAdvancements(this.server.getFixerUpper(), ((PlayerList) (Object) this), this.server.getAdvancements(), path, player);
-            // this.advancements.put(uUID, playerAdvancements);
+            this.advancements.put(uUID, playerAdvancements);
         }
 
         playerAdvancements.setPlayer(player);
