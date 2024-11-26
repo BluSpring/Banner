@@ -578,17 +578,6 @@ public abstract class MixinMinecraftServer extends ReentrantBlockableEventLoop<T
         return this.mayHaveDelayedTasks && Util.getNanos() < this.delayedTasksMaxNextTickTimeNanos;
     }
 
-    // Paper start
-    @Unique
-    private boolean banner$canSleepForTickNoOversleep() {
-        return this.forceTicks || this.runningTask() || Util.getNanos() < this.nextTickTimeNanos;
-    }
-
-    @Redirect(method = "waitUntilNextTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;runAllTasks()V"))
-    private void banner$moveOversleep(MinecraftServer instance) {
-        this.managedBlock(() -> !this.banner$canSleepForTickNoOversleep());
-    }
-
     @Inject(method = "tickServer", at = @At(value = "INVOKE", target = "Lnet/minecraft/Util;getNanos()J", ordinal = 0, shift = At.Shift.AFTER))
     private void banner$checkOversleep(BooleanSupplier booleanSupplier, CallbackInfo ci) {
         isOversleep = true;
@@ -597,13 +586,6 @@ public abstract class MixinMinecraftServer extends ReentrantBlockableEventLoop<T
         });
         isOversleep = false;
     }
-
-    @Inject(method = "tickServer", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/profiling/ProfilerFiller;push(Ljava/lang/String;)V", ordinal = 1))
-    private void banner$runExecuteAll(BooleanSupplier booleanSupplier, CallbackInfo ci) {
-        this.runAllTasks();
-    }
-
-    // Paper end
 
     @Inject(method = "tickServer", at = @At("RETURN"))
     private void banner$watchdogThreadStart(BooleanSupplier hasTimeLeft, CallbackInfo ci) {
