@@ -14,12 +14,6 @@ import com.mohistmc.banner.fabric.BannerDerivedWorldInfo;
 import com.mohistmc.banner.fabric.WorldSymlink;
 import com.mohistmc.banner.injection.server.level.InjectionServerLevel;
 import com.mohistmc.banner.injection.world.level.storage.InjectionLevelStorageAccess;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.Executor;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
@@ -55,12 +49,7 @@ import net.minecraft.world.level.entity.PersistentEntitySectionManager;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
-import net.minecraft.world.level.storage.DerivedLevelData;
-import net.minecraft.world.level.storage.DimensionDataStorage;
-import net.minecraft.world.level.storage.LevelStorageSource;
-import net.minecraft.world.level.storage.PrimaryLevelData;
-import net.minecraft.world.level.storage.ServerLevelData;
-import net.minecraft.world.level.storage.WritableLevelData;
+import net.minecraft.world.level.storage.*;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.ticks.LevelTicks;
 import org.bukkit.Bukkit;
@@ -85,14 +74,16 @@ import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Constant;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyConstant;
-import org.spongepowered.asm.mixin.injection.ModifyVariable;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 @Mixin(ServerLevel.class)
 public abstract class MixinServerLevel extends Level implements WorldGenLevel, InjectionServerLevel {
@@ -461,7 +452,7 @@ public abstract class MixinServerLevel extends Level implements WorldGenLevel, I
 
     @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;setDayTime(J)V"))
     private void banner$timeSkip(ServerLevel world, long time) {
-        TimeSkipEvent event = new TimeSkipEvent(this.getWorld(), TimeSkipEvent.SkipReason.NIGHT_SKIP, (time - time % 24000L) - this.getDayTime());
+        TimeSkipEvent event = new TimeSkipEvent(this.getWorld(), TimeSkipEvent.SkipReason.NIGHT_SKIP, time - this.getDayTime());
         Bukkit.getPluginManager().callEvent(event);
         banner$timeSkipCancelled.set(event.isCancelled());
         if (!event.isCancelled()) {
