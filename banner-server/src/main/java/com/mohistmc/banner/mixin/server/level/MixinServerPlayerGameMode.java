@@ -194,6 +194,11 @@ public abstract class MixinServerPlayerGameMode implements InjectionServerPlayer
         instance.debug(s, o, o1);
     }
 
+    @Inject(method = "handleBlockBreakAction", at = @At(value = "CONSTANT", args = "stringValue=aborted mismatched destroying"))
+    private void banner$resetDestroyPos(BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction, int i, int j, CallbackInfo ci) {
+        this.destroyPos = BlockPos.ZERO; // Paper
+    }
+
     @Inject(method = "handleBlockBreakAction", at = @At(value = "CONSTANT", args = "stringValue=aborted destroying"))
     private void banner$abortBlockBreak(BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction, int i, int j, CallbackInfo ci) {
         CraftEventFactory.callBlockDamageAbortEvent(this.player, blockPos, this.player.getInventory().getSelected());
