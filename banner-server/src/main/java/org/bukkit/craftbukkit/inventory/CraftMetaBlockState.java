@@ -4,15 +4,9 @@ import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
-import java.util.Map;
-import java.util.Set;
+import com.mohistmc.banner.injection.interaction.component.DataComponentPatch_BuilderInjection;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.component.DataComponentMap;
-import net.minecraft.core.component.DataComponentPatch;
-import net.minecraft.core.component.DataComponentType;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.component.PatchedDataComponentMap;
-import net.minecraft.core.component.TypedDataComponent;
+import net.minecraft.core.component.*;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.component.CustomData;
@@ -25,6 +19,9 @@ import org.bukkit.craftbukkit.block.CraftBlockEntityState;
 import org.bukkit.craftbukkit.block.CraftBlockStates;
 import org.bukkit.craftbukkit.util.CraftMagicNumbers;
 import org.bukkit.inventory.meta.BlockStateMeta;
+
+import java.util.Map;
+import java.util.Set;
 
 @DelegateDeserialization(SerializableMeta.class)
 public class CraftMetaBlockState extends CraftMetaItem implements BlockStateMeta {
@@ -91,7 +88,7 @@ public class CraftMetaBlockState extends CraftMetaItem implements BlockStateMeta
             Set<DataComponentType<?>> applied = blockEntityTag.applyComponents(map, tag);
             // Mark applied components as handled
             for (DataComponentType<?> seen : applied) {
-                this.unhandledTags.build().clear(seen);
+                ((DataComponentPatch_BuilderInjection) this.unhandledTags).clear(seen);
             }
             // Only set blockEntityTag if something was applied
             if (!applied.isEmpty()) {

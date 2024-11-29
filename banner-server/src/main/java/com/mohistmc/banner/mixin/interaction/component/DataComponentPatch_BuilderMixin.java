@@ -1,5 +1,6 @@
 package com.mohistmc.banner.mixin.interaction.component;
 
+import com.mohistmc.banner.injection.interaction.component.DataComponentPatch_BuilderInjection;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponentType;
@@ -10,7 +11,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import java.util.Optional;
 
 @Mixin(DataComponentPatch.Builder.class)
-public class DataComponentPatch_BuilderMixin {
+public class DataComponentPatch_BuilderMixin implements DataComponentPatch_BuilderInjection {
 
     @Shadow @Final public Reference2ObjectMap<DataComponentType<?>, Optional<?>> map;
 
