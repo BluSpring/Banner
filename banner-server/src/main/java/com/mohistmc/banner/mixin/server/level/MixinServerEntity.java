@@ -7,27 +7,8 @@ import com.mohistmc.banner.asm.annotation.ShadowConstructor;
 import com.mohistmc.banner.bukkit.BukkitFieldHooks;
 import com.mohistmc.banner.injection.server.level.InjectionServerEntity;
 import com.mojang.datafixers.util.Pair;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.function.Consumer;
-import java.util.stream.Stream;
-import javax.annotation.Nullable;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
-import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
-import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
-import net.minecraft.network.protocol.game.ClientboundSetEntityLinkPacket;
-import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
-import net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket;
-import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
-import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
-import net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket;
-import net.minecraft.network.protocol.game.ClientboundUpdateMobEffectPacket;
-import net.minecraft.network.protocol.game.VecDeltaCodec;
+import net.minecraft.network.protocol.game.*;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerEntity;
 import net.minecraft.server.level.ServerLevel;
@@ -42,22 +23,22 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.projectile.AbstractArrow;
+import net.minecraft.world.entity.projectile.AbstractHurtingProjectile;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.MapItem;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.phys.Vec3;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerVelocityEvent;
-import org.bukkit.util.Vector;
-import org.spongepowered.asm.mixin.Final;
-import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Overwrite;
-import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import javax.annotation.Nullable;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 @Mixin(ServerEntity.class)
 public abstract class MixinServerEntity implements InjectionServerEntity {
@@ -111,6 +92,13 @@ public abstract class MixinServerEntity implements InjectionServerEntity {
         this.trackedPlayers = set;
     }
 
+    // Paper start - fix desync when a player is added to the tracker
+    @Unique private boolean forceStateResync;
+    public void onPlayerAdd() {
+        this.forceStateResync = true;
+    }
+    // Paper end - fix desync when a player is added to the tracker
+
     /**
      * @author wdog5
      * @reason
@@ -118,136 +106,174 @@ public abstract class MixinServerEntity implements InjectionServerEntity {
     @Overwrite
     public void sendChanges() {
         List<Entity> list = this.entity.getPassengers();
+
         if (!list.equals(this.lastPassengers)) {
-            this.lastPassengers = list;
-            this.broadcast.accept(new ClientboundSetPassengersPacket(this.entity));
+            this.broadcastAndSend(new ClientboundSetPassengersPacket(this.entity)); // CraftBukkit
             removedPassengers(list, this.lastPassengers).forEach((entity) -> {
-                if (entity instanceof ServerPlayer serverPlayer) {
-                    serverPlayer.connection.teleport(serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ(), serverPlayer.getYRot(), serverPlayer.getXRot());
+                if (entity instanceof ServerPlayer entityplayer) {
+                    entityplayer.connection.teleport(entityplayer.getX(), entityplayer.getY(), entityplayer.getZ(), entityplayer.getYRot(), entityplayer.getXRot());
                 }
 
             });
+            this.lastPassengers = list;
         }
-        int elapsedTicks = BukkitFieldHooks.currentTick() - this.lastTick;
-        if (elapsedTicks < 0) {
-            elapsedTicks = 0;
-        }
-        this.lastTick = BukkitFieldHooks.currentTick();
-        if (this.entity instanceof ItemFrame itemFrame) {
-            ItemStack itemstack = itemFrame.getItem();
-            if (this.tickCount / 10 != this.lastMapUpdate && itemstack.getItem() instanceof MapItem) {
-                MapItemSavedData mapdata = MapItem.getSavedData(itemstack, this.level);
-                if (mapdata != null) {
-                    for (ServerPlayerConnection connection : this.trackedPlayers) {
-                        var serverplayerentity = connection.getPlayer();
-                        mapdata.tickCarriedBy(serverplayerentity, itemstack);
-                        Packet<?> ipacket = ((MapItem) itemstack.getItem()).getUpdatePacket(itemstack, this.level, serverplayerentity);
-                        if (ipacket != null) {
-                            serverplayerentity.connection.send(ipacket);
+
+        Entity entity = this.entity;
+
+        if (!this.trackedPlayers.isEmpty() && entity instanceof ItemFrame entityitemframe) { // Paper - Perf: Only tick item frames if players can see it
+            if (true || this.tickCount % 10 == 0) { // CraftBukkit - Moved below, should always enter this block
+                ItemStack itemstack = entityitemframe.getItem();
+
+                if (this.tickCount / 10 != this.lastMapUpdate && itemstack.getItem() instanceof MapItem) { // CraftBukkit - Moved this.tickCounter % 10 logic here so item frames do not enter the other blocks
+                    MapItemSavedData mapdata = MapItem.getSavedData(itemstack, this.level);
+                    if (mapdata != null) {
+                        for (ServerPlayerConnection connection : this.trackedPlayers) {
+                            var serverplayerentity = connection.getPlayer();
+                            mapdata.tickCarriedBy(serverplayerentity, itemstack);
+                            Packet<?> ipacket = ((MapItem) itemstack.getItem()).getUpdatePacket(itemstack, this.level, serverplayerentity);
+                            if (ipacket != null) {
+                                serverplayerentity.connection.send(ipacket);
+                            }
                         }
                     }
                 }
+
+                this.sendDirtyEntityData();
             }
-            this.sendDirtyEntityData();
         }
-        if (this.tickCount / this.updateInterval != this.lastUpdate || this.entity.hasImpulse || this.entity.getEntityData().isDirty()) {
+
+        if (this.forceStateResync || this.tickCount % this.updateInterval == 0 || this.entity.hasImpulse || this.entity.getEntityData().isDirty()) { // Paper - fix desync when a player is added to the tracker
+            int i;
+            int j;
+
             if (this.entity.isPassenger()) {
-                int i1 = Mth.floor(this.entity.getYRot() * 256.0F / 360.0F);
-                int l1 = Mth.floor(this.entity.getXRot() * 256.0F / 360.0F);
-                boolean flag2 = Math.abs(i1 - this.lastSentXRot) >= 1 || Math.abs(l1 - this.lastSentXRot) >= 1;
-                if (flag2) {
-                    this.broadcast.accept(new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) i1, (byte) l1, this.entity.onGround()));
-                    this.lastSentXRot = i1;
-                    this.lastSentXRot = l1;
+                i = Mth.floor(this.entity.getYRot() * 256.0F / 360.0F);
+                j = Mth.floor(this.entity.getXRot() * 256.0F / 360.0F);
+                boolean flag = Math.abs(i - this.lastSentYRot) >= 1 || Math.abs(j - this.lastSentXRot) >= 1;
+
+                if (flag) {
+                    this.broadcast.accept(new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) i, (byte) j, this.entity.onGround()));
+                    this.lastSentYRot = i;
+                    this.lastSentXRot = j;
                 }
+
                 this.positionCodec.setBase(this.entity.trackingPosition());
                 this.sendDirtyEntityData();
                 this.wasRiding = true;
             } else {
-                this.teleportDelay += elapsedTicks;
-                int l = Mth.floor(this.entity.getYRot() * 256.0F / 360.0F);
-                int k1 = Mth.floor(this.entity.getXRot() * 256.0F / 360.0F);
-                Vec3 vector3d = this.entity.trackingPosition();
-                boolean flag3 = this.positionCodec.delta(vector3d).lengthSqr() >= 7.62939453125E-6D;
-                Packet<?> ipacket1 = null;
-                boolean flag4 = flag3 || this.tickCount / 60 != this.lastPosUpdate;
-                boolean flag = Math.abs(l - this.lastSentYRot) >= 1 || Math.abs(k1 - this.lastSentXRot) >= 1;
-                boolean pos = false;
-                boolean rot = false;
-                if (this.tickCount > 0 || this.entity instanceof AbstractArrow) {
-                    long i = this.positionCodec.encodeX(vector3d);
-                    long j = this.positionCodec.encodeY(vector3d);
-                    long k = this.positionCodec.encodeZ(vector3d);
-                    boolean flag1 = i < -32768L || i > 32767L || j < -32768L || j > 32767L || k < -32768L || k > 32767L;
-                    if (!flag1 && this.teleportDelay <= 400 && !this.wasRiding && this.wasOnGround == this.entity.onGround()) {
-                        if ((!flag4 || !flag) && !(this.entity instanceof AbstractArrow)) {
-                            if (flag4) {
-                                ipacket1 = new ClientboundMoveEntityPacket.Pos(this.entity.getId(), (short) ((int) i), (short) ((int) j), (short) ((int) k), this.entity.onGround());
-                                pos = true;
-                            } else if (flag) {
-                                ipacket1 = new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) l, (byte) k1, this.entity.onGround());
-                                rot = true;
-                            }
-                        } else {
-                            ipacket1 = new ClientboundMoveEntityPacket.PosRot(this.entity.getId(), (short) ((int) i), (short) ((int) j), (short) ((int) k), (byte) l, (byte) k1, this.entity.onGround());
-                            pos = rot = true;
+                ++this.teleportDelay;
+                i = Mth.floor(this.entity.getYRot() * 256.0F / 360.0F);
+                j = Mth.floor(this.entity.getXRot() * 256.0F / 360.0F);
+                Vec3 vec3d = this.entity.trackingPosition();
+                // Paper start - reduce allocation of Vec3D here
+                Vec3 base = this.positionCodec.getBase();
+                double vec3d_dx = vec3d.x - base.x;
+                double vec3d_dy = vec3d.y - base.y;
+                double vec3d_dz = vec3d.z - base.z;
+                boolean flag1 = (vec3d_dx * vec3d_dx + vec3d_dy * vec3d_dy + vec3d_dz * vec3d_dz) >= 7.62939453125E-6D;
+                // Paper end - reduce allocation of Vec3D here
+                Packet<?> packet1 = null;
+                boolean flag2 = flag1 || this.tickCount % 60 == 0;
+                boolean flag3 = Math.abs(i - this.lastSentYRot) >= 1 || Math.abs(j - this.lastSentXRot) >= 1;
+                boolean flag4 = false;
+                boolean flag5 = false;
+                long k = this.positionCodec.encodeX(vec3d);
+                long l = this.positionCodec.encodeY(vec3d);
+                long i1 = this.positionCodec.encodeZ(vec3d);
+                boolean flag6 = k < -32768L || k > 32767L || l < -32768L || l > 32767L || i1 < -32768L || i1 > 32767L;
+
+                if (!this.forceStateResync && !flag6 && this.teleportDelay <= 400 && !this.wasRiding && this.wasOnGround == this.entity.onGround()) { // Paper - fix desync when a player is added to the tracker
+                    if ((!flag2 || !flag3) && !(this.entity instanceof AbstractArrow)) {
+                        if (flag2) {
+                            packet1 = new ClientboundMoveEntityPacket.Pos(this.entity.getId(), (short) ((int) k), (short) ((int) l), (short) ((int) i1), this.entity.onGround());
+                            flag4 = true;
+                        } else if (flag3) {
+                            packet1 = new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) i, (byte) j, this.entity.onGround());
+                            flag5 = true;
                         }
                     } else {
-                        this.wasOnGround = this.entity.onGround();
-                        this.teleportDelay = 0;
-                        ipacket1 = new ClientboundTeleportEntityPacket(this.entity);
-                        pos = rot = true;
+                        packet1 = new ClientboundMoveEntityPacket.PosRot(this.entity.getId(), (short) ((int) k), (short) ((int) l), (short) ((int) i1), (byte) i, (byte) j, this.entity.onGround());
+                        flag4 = true;
+                        flag5 = true;
                     }
+                } else {
+                    this.wasOnGround = this.entity.onGround();
+                    this.teleportDelay = 0;
+                    packet1 = new ClientboundTeleportEntityPacket(this.entity);
+                    flag4 = true;
+                    flag5 = true;
                 }
+
                 if ((this.trackDelta || this.entity.hasImpulse || this.entity instanceof LivingEntity && ((LivingEntity) this.entity).isFallFlying()) && this.tickCount > 0) {
-                    Vec3 vector3d1 = this.entity.getDeltaMovement();
-                    double d0 = vector3d1.distanceToSqr(this.lastSentMovement);
-                    if (d0 > 1.0E-7D || d0 > 0.0D && vector3d1.lengthSqr() == 0.0D) {
-                        this.lastSentMovement = vector3d1;
-                        this.broadcast.accept(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
+                    Vec3 vec3d1 = this.entity.getDeltaMovement();
+                    double d0 = vec3d1.distanceToSqr(this.lastSentMovement);
+
+                    if (d0 > 1.0E-7D || d0 > 0.0D && vec3d1.lengthSqr() == 0.0D) {
+                        this.lastSentMovement = vec3d1;
+                        Entity entity1 = this.entity;
+
+                        if (entity1 instanceof AbstractHurtingProjectile) {
+                            AbstractHurtingProjectile entityfireball = (AbstractHurtingProjectile) entity1;
+
+                            this.broadcast.accept(new ClientboundBundlePacket(List.of(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement), new ClientboundProjectilePowerPacket(entityfireball.getId(), entityfireball.accelerationPower))));
+                        } else {
+                            this.broadcast.accept(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
+                        }
                     }
                 }
-                if (ipacket1 != null) {
-                    this.broadcast.accept(ipacket1);
+
+                if (packet1 != null) {
+                    this.broadcast.accept(packet1);
                 }
+
                 this.sendDirtyEntityData();
-                if (pos) {
-                    this.positionCodec.setBase(vector3d);
+                if (flag4) {
+                    this.positionCodec.setBase(vec3d);
                 }
-                if (rot) {
-                    this.lastSentYRot = l;
-                    this.lastSentXRot = k1;
+
+                if (flag5) {
+                    this.lastSentYRot = i;
+                    this.lastSentXRot = j;
                 }
+
                 this.wasRiding = false;
             }
-            int j1 = Mth.floor(this.entity.getYHeadRot() * 256.0F / 360.0F);
-            if (Math.abs(j1 - this.lastSentYHeadRot) >= 1) {
-                this.broadcast.accept(new ClientboundRotateHeadPacket(this.entity, (byte) j1));
-                this.lastSentYHeadRot = j1;
+
+            i = Mth.floor(this.entity.getYHeadRot() * 256.0F / 360.0F);
+            if (Math.abs(i - this.lastSentYHeadRot) >= 1) {
+                this.broadcast.accept(new ClientboundRotateHeadPacket(this.entity, (byte) i));
+                this.lastSentYHeadRot = i;
             }
+
             this.entity.hasImpulse = false;
+            this.forceStateResync = false; // Paper - fix desync when a player is added to the tracker
         }
-        this.lastUpdate = this.tickCount / this.updateInterval;
-        this.lastPosUpdate = this.tickCount / 60;
-        this.lastMapUpdate = this.tickCount / 10;
-        this.tickCount += elapsedTicks;
+
+        ++this.tickCount;
         if (this.entity.hurtMarked) {
+            // CraftBukkit start - Create PlayerVelocity event
             boolean cancelled = false;
+
             if (this.entity instanceof ServerPlayer) {
-                Player player = ((ServerPlayer) this.entity).getBukkitEntity();
-                Vector velocity = player.getVelocity();
+                Player player = (Player) this.entity.getBukkitEntity();
+                org.bukkit.util.Vector velocity = player.getVelocity();
+
                 PlayerVelocityEvent event = new PlayerVelocityEvent(player, velocity.clone());
-                Bukkit.getPluginManager().callEvent(event);
+                this.entity.level().getCraftServer().getPluginManager().callEvent(event);
+
                 if (event.isCancelled()) {
                     cancelled = true;
                 } else if (!velocity.equals(event.getVelocity())) {
                     player.setVelocity(event.getVelocity());
                 }
             }
-            if (!cancelled) {
-                this.broadcastAndSend(new ClientboundSetEntityMotionPacket(this.entity));
+
+            if (cancelled) {
+                return;
             }
+            // CraftBukkit end
             this.entity.hurtMarked = false;
+            this.broadcastAndSend(new ClientboundSetEntityMotionPacket(this.entity));
         }
     }
 

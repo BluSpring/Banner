@@ -9,4 +9,8 @@ public interface InjectionServerEntity {
     default void setTrackedPlayers(Set<ServerPlayerConnection> trackedPlayers) {
         throw new IllegalStateException("Not implemented");
     }
+
+    default void onPlayerAdd() {
+        throw new IllegalStateException("Not implemented");
+    }
 }
