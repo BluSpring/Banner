@@ -108,6 +108,6 @@ public abstract class MixinCampfireBlockEntity extends BlockEntity {
     private void banner$cookStart(LivingEntity livingEntity, ItemStack itemStack, int i, CallbackInfoReturnable<Boolean> cir, int j, ItemStack itemStack2) {
         var event = new CampfireStartEvent(CraftBlock.at(this.level, this.worldPosition), CraftItemStack.asCraftMirror(itemStack), (CampfireRecipe) ((RecipeHolder) (Object) getCookableRecipe(itemStack).get()).toBukkitRecipe());
         Bukkit.getPluginManager().callEvent(event);
-        this.cookingTime[i] = event.getTotalCookTime();
+        this.cookingTime[j] = event.getTotalCookTime();
     }
 }
