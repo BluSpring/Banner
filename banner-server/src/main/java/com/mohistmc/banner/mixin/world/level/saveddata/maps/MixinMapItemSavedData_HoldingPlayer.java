@@ -44,7 +44,12 @@ public abstract class MixinMapItemSavedData_HoldingPlayer {
     @Inject(method = "nextUpdatePacket", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/world/level/saveddata/maps/MapItemSavedData$HoldingPlayer;createPatch()Lnet/minecraft/world/level/saveddata/maps/MapItemSavedData$MapPatch;"))
     private void banner$checkColors(MapId mapId, CallbackInfoReturnable<Packet<?>> cir) {
-        RenderData render = field_132.bridge$mapView().render((CraftPlayer) this.banner$player.getAndSet(null).getBukkitEntity()); // CraftBukkit
+        var player = this.banner$player.getAndSet(null);
+
+        if (player == null)
+            return;
+
+        RenderData render = field_132.bridge$mapView().render((CraftPlayer) player.getBukkitEntity()); // CraftBukkit
         banner$render.set(render);
         field_132.colors = render.buffer;
     }
@@ -58,8 +63,14 @@ public abstract class MixinMapItemSavedData_HoldingPlayer {
 
     @Redirect(method = "nextUpdatePacket", at = @At(value = "INVOKE", target = "Ljava/util/Map;values()Ljava/util/Collection;"))
     private Collection<MapDecoration> banner$resetCollections(Map instance) {
+        var render = banner$render.getAndSet(null);
+
+        if (render == null) {
+            return icons;
+        }
+
         // CraftBukkit start
-        for (org.bukkit.map.MapCursor cursor : banner$render.getAndSet(null).cursors) {
+        for (org.bukkit.map.MapCursor cursor : render.cursors) {
             if (cursor.isVisible()) {
                 icons.add(new MapDecoration(CraftMapCursor.CraftType.bukkitToMinecraftHolder(cursor.getType()), cursor.getX(), cursor.getY(), cursor.getDirection(), CraftChatMessage.fromStringOrOptional(cursor.getCaption())));
             }
