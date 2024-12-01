@@ -216,6 +216,8 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
 
     @Shadow public abstract int getArmorValue();
 
+    @Shadow public abstract boolean removeEffect(Holder<MobEffect> holder);
+
     public MixinLivingEntity(EntityType<?> entityType, Level level) {
         super(entityType, level);
     }
@@ -811,6 +813,12 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
     public boolean addEffect(MobEffectInstance effect, EntityPotionEffectEvent.Cause cause) {
         pushEffectCause(cause);
         return this.addEffect(effect, (Entity) null);
+    }
+
+    @Override
+    public boolean removeEffect(Holder<MobEffect> holder, EntityPotionEffectEvent.Cause cause) {
+        pushEffectCause(cause);
+        return removeEffect(holder);
     }
 
     @Override

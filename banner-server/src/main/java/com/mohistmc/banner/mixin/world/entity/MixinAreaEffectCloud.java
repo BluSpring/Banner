@@ -3,16 +3,8 @@ package com.mohistmc.banner.mixin.world.entity;
 import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
 import io.izzel.arclight.mixin.Local;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.entity.AreaEffectCloud;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.TraceableEntity;
+import net.minecraft.world.entity.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import org.bukkit.craftbukkit.entity.CraftLivingEntity;
@@ -26,6 +18,11 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Mixin(AreaEffectCloud.class)
 public abstract class MixinAreaEffectCloud extends Entity implements TraceableEntity {
@@ -52,7 +49,7 @@ public abstract class MixinAreaEffectCloud extends Entity implements TraceableEn
                     return d5 <= (double) (radius * radius);
                 })
                 .map(it -> (org.bukkit.entity.LivingEntity) it.getBukkitEntity())
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
         var event = CraftEventFactory.callAreaEffectCloudApplyEvent((AreaEffectCloud) (Object) this, affected);
         if (!event.isCancelled()) {
             return event.getAffectedEntities().stream().map(it -> ((CraftLivingEntity) it).getHandle()).collect(Collectors.toCollection(ArrayList::new));
