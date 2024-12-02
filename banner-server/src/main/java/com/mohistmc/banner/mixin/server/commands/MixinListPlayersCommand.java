@@ -1,6 +1,7 @@
 package com.mohistmc.banner.mixin.server.commands;
 
 import com.llamalad7.mixinextras.sugar.Local;
+import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.commands.ListPlayersCommand;
@@ -19,10 +20,10 @@ public class MixinListPlayersCommand {
     @Inject(method = "format",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/network/chat/ComponentUtils;formatList(Ljava/util/Collection;Ljava/util/function/Function;)Lnet/minecraft/network/chat/Component;"))
-    private static void banner$format(CommandSourceStack source, Function<ServerPlayer, Component> nameExtractor, CallbackInfoReturnable<Integer> cir, @Local List<ServerPlayer> list) {
+    private static void banner$format(CommandSourceStack source, Function<ServerPlayer, Component> nameExtractor, CallbackInfoReturnable<Integer> cir, @Local LocalRef<List<ServerPlayer>> list) {
         // CraftBukkit start
         if (source.banner$getBukkitSender() instanceof org.bukkit.entity.Player sender) {
-            list = list.stream().filter((ep) -> sender.canSee(ep.getBukkitEntity())).collect(java.util.stream.Collectors.toList());
+            list.set(list.get().stream().filter((ep) -> sender.canSee(ep.getBukkitEntity())).collect(java.util.stream.Collectors.toList()));
         }
         // CraftBukkit end
     }
