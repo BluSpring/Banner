@@ -3,10 +3,17 @@ package com.mohistmc.banner.mixin.world.entity;
 import com.destroystokyo.paper.event.player.PlayerArmorChangeEvent;
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
+import com.llamalad7.mixinextras.expression.Definition;
+import com.llamalad7.mixinextras.expression.Expression;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
+import com.llamalad7.mixinextras.sugar.Cancellable;
 import com.llamalad7.mixinextras.sugar.Local;
+import com.llamalad7.mixinextras.sugar.Share;
+import com.llamalad7.mixinextras.sugar.ref.LocalBooleanRef;
+import com.llamalad7.mixinextras.sugar.ref.LocalFloatRef;
+import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import com.mohistmc.banner.bukkit.BukkitSnapshotCaptures;
-import com.mohistmc.banner.bukkit.EntityDamageResult;
 import com.mohistmc.banner.bukkit.ProcessableEffect;
 import com.mohistmc.banner.injection.world.entity.InjectionLivingEntity;
 import io.izzel.arclight.mixin.Decorate;
@@ -29,11 +36,12 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.stats.Stats;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.tags.EntityTypeTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.damagesource.CombatRules;
 import net.minecraft.world.damagesource.CombatTracker;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -48,7 +56,6 @@ import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.Equipable;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -67,10 +74,7 @@ import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.*;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
-import org.spongepowered.asm.mixin.injection.Slice;
+import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -429,255 +433,200 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
         return !this.isRemoved() && this.entityData.get(DATA_HEALTH_ID) > 0.0F;
     }
 
-    private transient boolean banner$damageResult;
-    @Unique protected transient EntityDamageResult entityDamageResult;
+    @Unique private transient boolean banner$damageResult;
+    @Unique protected transient EntityDamageEvent damageEvent;
 
-    @Decorate(method = "hurt", inject = true, at = @At(value = "FIELD", target = "Lnet/minecraft/world/entity/LivingEntity;noActionTime:I"))
-    private void banner$entityDamageEvent(DamageSource damagesource, float originalDamage) throws Throwable {
-        banner$damageResult = false;
-        entityDamageResult = null;
-        final boolean human = (Object) this instanceof net.minecraft.world.entity.player.Player;
+    @Inject(method = "hurt", at = @At("HEAD"))
+    private void banner$storeOriginalAmount(DamageSource damageSource, float f, CallbackInfoReturnable<Boolean> cir, @Share("originalAmount") LocalFloatRef originalAmount) {
+        originalAmount.set(f);
+    }
 
-        float damage = originalDamage;
+    @Redirect(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;isDeadOrDying()Z", ordinal = 0))
+    private boolean banner$checkIfIsDead(LivingEntity instance) {
+        return instance.isRemoved() || this.dead || instance.getHealth() <= 0f;
+    }
 
-        Function<Double, Double> blocking = f -> -((this.isDamageSourceBlocked(damagesource)) ? f : 0.0);
-        float blockingModifier = blocking.apply((double) damage).floatValue();
-        damage += blockingModifier;
+    @Inject(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;isDamageSourceBlocked(Lnet/minecraft/world/damagesource/DamageSource;)Z", ordinal = 0))
+    private void banner$setFlagValue(DamageSource damageSource, float f, CallbackInfoReturnable<Boolean> cir, @Local LocalBooleanRef flag) {
+        flag.set(f > 0f && this.isDamageSourceBlocked(damageSource));
+    }
 
-        Function<Double, Double> freezing = f -> {
-            if (damagesource.is(DamageTypeTags.IS_FREEZING) && this.getType().is(EntityTypeTags.FREEZE_HURTS_EXTRA_TYPES)) {
-                return -(f - (f * 5.0F));
-            }
-            return -0.0;
-        };
-        float freezingModifier = freezing.apply((double) damage).floatValue();
-        damage += freezingModifier;
+    @Redirect(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;isDamageSourceBlocked(Lnet/minecraft/world/damagesource/DamageSource;)Z", ordinal = 0))
+    private boolean banner$preventDamageSourceCheck(LivingEntity instance, DamageSource damageSource) {
+        return false;
+    }
 
-        Function<Double, Double> hardHat = f -> {
-            if (damagesource.is(DamageTypeTags.DAMAGES_HELMET) && !this.getItemBySlot(EquipmentSlot.HEAD).isEmpty()) {
-                return -(f - (f * 0.75F));
-            }
-            return -0.0;
-        };
-        float hardHatModifier = hardHat.apply((double) damage).floatValue();
-        damage += hardHatModifier;
+    @Redirect(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/damagesource/DamageSource;is(Lnet/minecraft/tags/TagKey;)Z", ordinal = 2))
+    private boolean banner$preventDamageSourceCheck(DamageSource instance, TagKey<DamageType> tagKey) {
+        return false;
+    }
 
-        if ((float) this.invulnerableTime > (float) this.invulnerableDuration / 2.0F && !damagesource.is(DamageTypeTags.BYPASSES_COOLDOWN)) {
-            if (damage <= this.lastHurt) {
-                if (damagesource.getEntity() instanceof net.minecraft.world.entity.player.Player) {
-                    ((net.minecraft.world.entity.player.Player) damagesource.getEntity()).resetAttackStrengthTicker();
+    @Redirect(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/damagesource/DamageSource;is(Lnet/minecraft/tags/TagKey;)Z", ordinal = 3))
+    private boolean banner$preventDamageSourceCheck2(DamageSource instance, TagKey<DamageType> tagKey) {
+        return false;
+    }
+
+    @ModifyConstant(method = "hurt", constant = @Constant(floatValue = 10.0f))
+    private float banner$useInvulnerableDuration(float constant) {
+        return this.invulnerableDuration / 2f;
+    }
+
+    @Redirect(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;actuallyHurt(Lnet/minecraft/world/damagesource/DamageSource;F)V"))
+    private void banner$wrapActuallyHurt(LivingEntity instance, DamageSource damageSource, float f, @Share("event") LocalRef<EntityDamageEvent> event, @Local(argsOnly = true) LocalFloatRef amountRef, @Cancellable CallbackInfoReturnable<Boolean> cir, @Share("originalAmount") LocalFloatRef originalAmount) {
+        event.set(this.handleEntityDamage(damageSource, f));
+        damageEvent = event.get();
+        banner$damageResult = true;
+        amountRef.set(this.computeAmountFromEntityDamageEvent(event.get()));
+
+        if (!damageEntity0(damageSource, (float) event.get().getFinalDamage() - (this.invulnerableTime == 20 ? 0 : this.lastHurt))) {
+            damageEvent = null;
+            cir.setReturnValue(false);
+            return;
+        }
+
+        damageEvent = null;
+
+        if ((Object) this instanceof ServerPlayer && event.get().getDamage() == 0 && originalAmount.get() == 0f) {
+            cir.setReturnValue(false);
+        }
+    }
+
+    @Inject(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;actuallyHurt(Lnet/minecraft/world/damagesource/DamageSource;F)V", ordinal = 1, shift = At.Shift.AFTER))
+    private void banner$modifyInvulnerableTime(DamageSource damageSource, float f, CallbackInfoReturnable<Boolean> cir) {
+        this.invulnerableTime = this.invulnerableDuration;
+    }
+
+    @WrapWithCondition(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;markHurt()V"))
+    private boolean banner$checkIfActuallyHurt(LivingEntity instance, @Local(ordinal = 0) boolean flag) {
+        return !flag;
+    }
+
+    @Definition(id = "f", local = @Local(argsOnly = true, type = float.class))
+    @Expression("f > 0.0")
+    @ModifyExpressionValue(method = "hurt", at = @At(value = "MIXINEXTRAS:EXPRESSION", ordinal = 2))
+    private boolean banner$useFlagOnly(boolean original) {
+        return false;
+    }
+
+    private EntityDamageEvent handleEntityDamage(final DamageSource damagesource, float f) {
+        float originalDamage = f;
+
+        Function<Double, Double> freezing = new Function<Double, Double>() {
+            @Override
+            public Double apply(Double f) {
+                if (damagesource.is(DamageTypeTags.IS_FREEZING) && MixinLivingEntity.this.getType().is(EntityTypeTags.FREEZE_HURTS_EXTRA_TYPES)) {
+                    return -(f - (f * 5.0F));
                 }
-                return;
+                return -0.0;
             }
-        }
-
-        Function<Double, Double> armor = f -> {
-            if (!damagesource.is(DamageTypeTags.BYPASSES_ARMOR)) {
-                return -(f - CombatRules.getDamageAfterAbsorb((LivingEntity) (Object) this, f.floatValue(), damagesource, (float) this.getArmorValue(), (float) this.getAttributeValue(Attributes.ARMOR_TOUGHNESS)));
-            }
-
-            return -0.0;
         };
-        float originalArmorDamage = damage;
-        float armorModifier = armor.apply((double) damage).floatValue();
-        damage += armorModifier;
+        float freezingModifier = freezing.apply((double) f).floatValue();
+        f += freezingModifier;
 
-        Function<Double, Double> resistance = f -> {
-            if (!damagesource.is(DamageTypeTags.BYPASSES_EFFECTS) && this.hasEffect(MobEffects.DAMAGE_RESISTANCE) && !damagesource.is(DamageTypeTags.BYPASSES_RESISTANCE)) {
-                int i = (this.getEffect(MobEffects.DAMAGE_RESISTANCE).getAmplifier() + 1) * 5;
-                int j = 25 - i;
-                float f1 = f.floatValue() * (float) j;
-                return -(f - (f1 / 25.0F));
+        Function<Double, Double> hardHat = new Function<Double, Double>() {
+            @Override
+            public Double apply(Double f) {
+                if (damagesource.is(DamageTypeTags.DAMAGES_HELMET) && !MixinLivingEntity.this.getItemBySlot(EquipmentSlot.HEAD).isEmpty()) {
+                    return -(f - (f * 0.75F));
+                }
+                return -0.0;
             }
-            return -0.0;
         };
-        float resistanceModifier = resistance.apply((double) damage).floatValue();
-        damage += resistanceModifier;
+        float hardHatModifier = hardHat.apply((double) f).floatValue();
+        f += hardHatModifier;
 
-        Function<Double, Double> magic = f -> {
-            float l;
-            if (this.level() instanceof ServerLevel serverLevel) {
-                l = EnchantmentHelper.getDamageProtection(serverLevel, (LivingEntity) (Object) this, damagesource);
-            } else {
-                l = 0.0F;
+        Function<Double, Double> blocking = new Function<Double, Double>() {
+            @Override
+            public Double apply(Double f) {
+                return -((MixinLivingEntity.this.isDamageSourceBlocked(damagesource)) ? f : 0.0);
             }
-
-            if (l > 0.0F) {
-                return -(f - CombatRules.getDamageAfterMagicAbsorb(f.floatValue(), l));
-            }
-            return -0.0;
         };
-        float magicModifier = magic.apply((double) damage).floatValue();
-        damage += magicModifier;
+        float blockingModifier = blocking.apply((double) f).floatValue();
+        f += blockingModifier;
 
-        Function<Double, Double> absorption = f -> -(Math.max(f - Math.max(f - this.getAbsorptionAmount(), 0.0F), 0.0F));
-        float absorptionModifier = absorption.apply((double) damage).floatValue();
-
-        EntityDamageEvent event = CraftEventFactory.handleLivingEntityDamageEvent((LivingEntity) (Object) this, damagesource, originalDamage, freezingModifier, hardHatModifier, blockingModifier, armorModifier, resistanceModifier, magicModifier, absorptionModifier, freezing, hardHat, blocking, armor, resistance, magic, absorption);
-        if (damagesource.getEntity() instanceof net.minecraft.world.entity.player.Player) {
-            ((net.minecraft.world.entity.player.Player) damagesource.getEntity()).resetAttackStrengthTicker();
-        }
-
-        if (event.isCancelled()) {
-            DecorationOps.cancel().invoke(false);
-            return;
-        }
-
-        damage = (float) event.getFinalDamage();
-        float damageOffset = damage - originalDamage;
-        float armorDamage = (float) (event.getDamage() + event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING) + event.getDamage(EntityDamageEvent.DamageModifier.HARD_HAT));
-        entityDamageResult = new
-
-                EntityDamageResult(
-                Math.abs(damageOffset) > 1E-6,
-                originalDamage,
-                damage,
-                damageOffset,
-                originalArmorDamage,
-                armorDamage - originalArmorDamage,
-                hardHatModifier > 0 && damage <= 0,
-                armorModifier > 0 && (event.getDamage() + event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING) + event.getDamage(EntityDamageEvent.DamageModifier.HARD_HAT)) <= 0,
-                blockingModifier < 0 && event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING) >= 0
-        );
-
-        if (damage > 0 || !human) {
-            banner$damageResult = true;
-        } else {
-            if (event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING) < 0) {
-                banner$damageResult = true;
-            } else {
-                banner$damageResult = originalDamage > 0;
+        Function<Double, Double> armor = new Function<Double, Double>() {
+            @Override
+            public Double apply(Double f) {
+                return -(f - MixinLivingEntity.this.getDamageAfterArmorAbsorb(damagesource, f.floatValue()));
             }
-        }
-        if (damage == 0) {
-            originalDamage = 0;
-            DecorationOps.blackhole().invoke(originalDamage);
-        }
-    }
+        };
+        float armorModifier = armor.apply((double) f).floatValue();
+        f += armorModifier;
 
-    @ModifyExpressionValue(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;isDamageSourceBlocked(Lnet/minecraft/world/damagesource/DamageSource;)Z"))
-    private boolean banner$cancelShieldBlock(boolean original) {
-        return (entityDamageResult == null || !entityDamageResult.blockingCancelled()) && original;
-    }
-
-    @Decorate(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;hurtHelmet(Lnet/minecraft/world/damagesource/DamageSource;F)V"))
-    private void banner$cancelHurtHelmet(LivingEntity instance, DamageSource damageSource, float f) throws
-            Throwable {
-        if (entityDamageResult == null || !entityDamageResult.helmetHurtCancelled()) {
-            var result = f + entityDamageResult.armorDamageOffset();
-            if (entityDamageResult.armorDamageOffset() < 0 && result < 0) {
-                result = f + f * (entityDamageResult.armorDamageOffset() / entityDamageResult.originalArmorDamage());
+        Function<Double, Double> resistance = new Function<Double, Double>() {
+            @Override
+            public Double apply(Double f) {
+                if (!damagesource.is(DamageTypeTags.BYPASSES_EFFECTS) && MixinLivingEntity.this.hasEffect(MobEffects.DAMAGE_RESISTANCE) && !damagesource.is(DamageTypeTags.BYPASSES_RESISTANCE)) {
+                    int i = (MixinLivingEntity.this.getEffect(MobEffects.DAMAGE_RESISTANCE).getAmplifier() + 1) * 5;
+                    int j = 25 - i;
+                    float f1 = f.floatValue() * (float) j;
+                    return -(f - (f1 / 25.0F));
+                }
+                return -0.0;
             }
-            if (result > 0) {
-                DecorationOps.callsite().invoke(instance, damageSource, result);
+        };
+        float resistanceModifier = resistance.apply((double) f).floatValue();
+        f += resistanceModifier;
+
+        Function<Double, Double> magic = new Function<Double, Double>() {
+            @Override
+            public Double apply(Double f) {
+                return -(f - MixinLivingEntity.this.getDamageAfterMagicAbsorb(damagesource, f.floatValue()));
             }
-        }
+        };
+        float magicModifier = magic.apply((double) f).floatValue();
+        f += magicModifier;
+
+        Function<Double, Double> absorption = new Function<Double, Double>() {
+            @Override
+            public Double apply(Double f) {
+                return -(Math.max(f - Math.max(f - MixinLivingEntity.this.getAbsorptionAmount(), 0.0F), 0.0F));
+            }
+        };
+        float absorptionModifier = absorption.apply((double) f).floatValue();
+
+        return CraftEventFactory.handleLivingEntityDamageEvent(this, damagesource, originalDamage, freezingModifier, hardHatModifier, blockingModifier, armorModifier, resistanceModifier, magicModifier, absorptionModifier, freezing, hardHat, blocking, armor, resistance, magic, absorption);
     }
 
-    @Decorate(method = "hurt", at = @At(value = "FIELD", target = "Lnet/minecraft/world/entity/LivingEntity;invulnerableTime:I"),
-            slice = @Slice(to = @At(value = "FIELD", target = "Lnet/minecraft/tags/DamageTypeTags;BYPASSES_COOLDOWN:Lnet/minecraft/tags/TagKey;")))
-    private int banner$useInvulnerableDuration(LivingEntity instance) throws Throwable {
-        int result = (int) DecorationOps.callsite().invoke(instance);
-        return result + 10 - (int) (this.invulnerableDuration / 2.0F);
+    // Paper start - only call damage event when actuallyHurt will be called - move out amount computation logic
+    private float computeAmountFromEntityDamageEvent(final EntityDamageEvent event) {
+        // Taken from hurt()'s craftbukkit diff.
+        float amount = 0;
+        amount += (float) event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+        amount += (float) event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING);
+        amount += (float) event.getDamage(EntityDamageEvent.DamageModifier.FREEZING);
+        amount += (float) event.getDamage(EntityDamageEvent.DamageModifier.HARD_HAT);
+        return amount;
     }
-
-    @Decorate(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;actuallyHurt(Lnet/minecraft/world/damagesource/DamageSource;F)V"))
-    private void banner$returnIfBlocked(LivingEntity instance, DamageSource damageSource, float f) throws
-            Throwable {
-        DecorationOps.callsite().invoke(instance, damageSource, f);
-        if (!banner$damageResult) {
-            DecorationOps.cancel().invoke(false);
-            return;
-        }
-        DecorationOps.blackhole().invoke();
-    }
+    // Paper end - only call damage event when actuallyHurt will be called - move out amount computation logic
 
     @Override
     public boolean damageEntity0(DamageSource damagesource, float f) {
+        var event = damageEvent;
+
         if (!this.isInvulnerableTo(damagesource)) {
-            LivingEntity livingEntity = (LivingEntity) (Object) this;
-            final boolean human = livingEntity instanceof Player;
-            if (f <= 0) return banner$damageResult = true;
-            float originalDamage = f;
-            Function<Double, Double> hardHat = new Function<>() {
-                @Override
-                public Double apply(Double f) {
-                    if (damagesource.is(DamageTypeTags.DAMAGES_HELMET) && !getItemBySlot(EquipmentSlot.HEAD).isEmpty()) {
-                        return -(f - (f * 0.75F));
-
-                    }
-                    return -0.0;
-                }
-            };
-            float hardHatModifier = hardHat.apply((double) f).floatValue();
-            f += hardHatModifier;
-
-            Function<Double, Double> blocking = new Function<>() {
-                @Override
-                public Double apply(Double f) {
-                    return -((isDamageSourceBlocked(damagesource)) ? f : 0.0);
-                }
-            };
-            float blockingModifier = blocking.apply((double) f).floatValue();
-            f += blockingModifier;
-
-            Function<Double, Double> armor = new Function<>() {
-                @Override
-                public Double apply(Double f) {
-                    return -(f - getDamageAfterArmorAbsorb(damagesource, f.floatValue()));
-                }
-            };
-            float armorModifier = armor.apply((double) f).floatValue();
-            f += armorModifier;
-
-            Function<Double, Double> resistance = new Function<>() {
-                @Override
-                public Double apply(Double f) {
-                    if (!damagesource.is(DamageTypeTags.BYPASSES_EFFECTS) && hasEffect(MobEffects.DAMAGE_RESISTANCE) && !damagesource.is(DamageTypeTags.BYPASSES_RESISTANCE)) {
-                        int i = (livingEntity.getEffect(MobEffects.DAMAGE_RESISTANCE).getAmplifier() + 1) * 5;
-                        int j = 25 - i;
-                        float f1 = f.floatValue() * (float) j;
-                        return -(f - (f1 / 25.0F));
-                    }
-                    return -0.0;
-                }
-            };
-            float resistanceModifier = resistance.apply((double) f).floatValue();
-            f += resistanceModifier;
-
-            Function<Double, Double> magic = new Function<>() {
-                @Override
-                public Double apply(Double f) {
-                    return -(f - getDamageAfterMagicAbsorb(damagesource, f.floatValue()));
-                }
-            };
-            float magicModifier = magic.apply((double) f).floatValue();
-            f += magicModifier;
-
-            Function<Double, Double> absorption = new Function<>() {
-                @Override
-                public Double apply(Double f) {
-                    return -(Math.max(f - Math.max(f - getAbsorptionAmount(), 0.0F), 0.0F));
-                }
-            };
-            float absorptionModifier = absorption.apply((double) f).floatValue();
-
-            EntityDamageEvent event = CraftEventFactory.handleLivingEntityDamageEvent(this, damagesource, originalDamage, hardHatModifier, blockingModifier, armorModifier, resistanceModifier, magicModifier, absorptionModifier, null, blocking, armor, resistance, magic, absorption);
-            if (damagesource.getEntity() instanceof Player) {
-                ((Player) damagesource.getEntity()).resetAttackStrengthTicker(); // Moved from EntityHuman in order to make the cooldown reset get called after the damage event is fired
-            }
             if (event.isCancelled()) {
-                return banner$damageResult = false;
+                return false;
             }
 
-            f = (float) event.getFinalDamage();
+            if (damagesource.getEntity() instanceof net.minecraft.world.entity.player.Player) {
+                // Paper start - PlayerAttackEntityCooldownResetEvent
+                //((net.minecraft.world.entity.player.Player) damagesource.getEntity()).resetAttackStrengthTicker(); // Moved from EntityHuman in order to make the cooldown reset get called after the damage event is fired
+                if (damagesource.getEntity() instanceof ServerPlayer) {
+                    ServerPlayer player = (ServerPlayer) damagesource.getEntity();
+                    player.resetAttackStrengthTicker();
+                } else {
+                    ((net.minecraft.world.entity.player.Player) damagesource.getEntity()).resetAttackStrengthTicker();
+                }
+                // Paper end - PlayerAttackEntityCooldownResetEvent
+            }
 
             // Resistance
             if (event.getDamage(EntityDamageEvent.DamageModifier.RESISTANCE) < 0) {
                 float f3 = (float) -event.getDamage(EntityDamageEvent.DamageModifier.RESISTANCE);
                 if (f3 > 0.0F && f3 < 3.4028235E37F) {
-                    if (livingEntity instanceof ServerPlayer serverPlayer) {
-                        serverPlayer.awardStat(Stats.DAMAGE_RESISTED, Math.round(f3 * 10.0F));
+                    if ((Object) this instanceof ServerPlayer) {
+                        ((ServerPlayer) (Object) this).awardStat(Stats.DAMAGE_RESISTED, Math.round(f3 * 10.0F));
                     } else if (damagesource.getEntity() instanceof ServerPlayer) {
                         ((ServerPlayer) damagesource.getEntity()).awardStat(Stats.DAMAGE_DEALT_RESISTED, Math.round(f3 * 10.0F));
                     }
@@ -697,74 +646,77 @@ public abstract class MixinLivingEntity extends Entity implements Attackable, In
 
             // Apply blocking code // PAIL: steal from above
             if (event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING) < 0) {
-                this.level().broadcastEntityEvent(this, (byte) 29); // SPIGOT-4635 - shield damage sound
                 this.hurtCurrentlyUsedShield((float) -event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING));
                 Entity entity = damagesource.getDirectEntity();
 
-                if (entity instanceof LivingEntity) {
+                if (!damagesource.is(DamageTypeTags.IS_PROJECTILE) && entity instanceof LivingEntity && entity.distanceToSqr(this) <= (200.0D * 200.0D)) { // Paper - Fix shield disable inconsistency & Check distance in entity interactions
                     this.blockUsingShield((LivingEntity) entity);
                 }
             }
 
-            absorptionModifier = (float) -event.getDamage(EntityDamageEvent.DamageModifier.ABSORPTION);
+            boolean human = (Object) this instanceof net.minecraft.world.entity.player.Player;
+            float originalDamage = (float) event.getDamage();
+            float absorptionModifier = (float) -event.getDamage(EntityDamageEvent.DamageModifier.ABSORPTION);
             this.setAbsorptionAmount(Math.max(this.getAbsorptionAmount() - absorptionModifier, 0.0F));
             float f2 = absorptionModifier;
 
-            if (f2 > 0.0F && f2 < 3.4028235E37F && livingEntity instanceof Player player) {
-                player.awardStat(Stats.DAMAGE_ABSORBED, Math.round(f2 * 10.0F));
+            if (f2 > 0.0F && f2 < 3.4028235E37F && (Object) this instanceof net.minecraft.world.entity.player.Player) {
+                ((net.minecraft.world.entity.player.Player) (Object) this).awardStat(Stats.DAMAGE_ABSORBED, Math.round(f2 * 10.0F));
             }
+            // CraftBukkit end
+
             if (f2 > 0.0F && f2 < 3.4028235E37F) {
                 Entity entity = damagesource.getEntity();
 
-                if (entity instanceof ServerPlayer entityplayer) {
+                if (entity instanceof ServerPlayer) {
+                    ServerPlayer entityplayer = (ServerPlayer) entity;
 
                     entityplayer.awardStat(Stats.DAMAGE_DEALT_ABSORBED, Math.round(f2 * 10.0F));
                 }
             }
 
+            // CraftBukkit start
             if (f > 0 || !human) {
                 if (human) {
                     // PAIL: Be sure to drag all this code from the EntityHuman subclass each update.
-                    ((Player) livingEntity).causeFoodExhaustion(damagesource.getFoodExhaustion(), org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.DAMAGED); // CraftBukkit - EntityExhaustionEvent
+                    ((net.minecraft.world.entity.player.Player) (Object) this).causeFoodExhaustion(damagesource.getFoodExhaustion(), org.bukkit.event.entity.EntityExhaustionEvent.ExhaustionReason.DAMAGED); // CraftBukkit - EntityExhaustionEvent
                     if (f < 3.4028235E37F) {
-                        ((Player) livingEntity).awardStat(Stats.DAMAGE_TAKEN, Math.round(f * 10.0F));
+                        ((net.minecraft.world.entity.player.Player) (Object) this).awardStat(Stats.DAMAGE_TAKEN, Math.round(f * 10.0F));
                     }
                 }
                 // CraftBukkit end
-                float f3 = this.getHealth();
-
                 this.getCombatTracker().recordDamage(damagesource, f);
-                this.setHealth(f3 - f);
+                this.setHealth(this.getHealth() - f);
                 // CraftBukkit start
                 if (!human) {
                     this.setAbsorptionAmount(this.getAbsorptionAmount() - f);
                 }
                 this.gameEvent(GameEvent.ENTITY_DAMAGE);
 
-                return banner$damageResult = true;
+                return true;
             } else {
                 // Duplicate triggers if blocking
                 if (event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING) < 0) {
-                    if (livingEntity instanceof ServerPlayer) {
-                        CriteriaTriggers.ENTITY_HURT_PLAYER.trigger(((ServerPlayer) livingEntity), damagesource, f, originalDamage, true);
+                    if ((Object) this instanceof ServerPlayer) {
+                        CriteriaTriggers.ENTITY_HURT_PLAYER.trigger((ServerPlayer) (Object) this, damagesource, originalDamage, f, true); // Paper - fix taken/dealt param order
                         f2 = (float) -event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING);
                         if (f2 > 0.0F && f2 < 3.4028235E37F) {
-                            ((ServerPlayer) livingEntity).awardStat(Stats.DAMAGE_BLOCKED_BY_SHIELD, Math.round(originalDamage * 10.0F));
+                            ((ServerPlayer) (Object) this).awardStat(Stats.DAMAGE_BLOCKED_BY_SHIELD, Math.round(originalDamage * 10.0F));
                         }
                     }
 
                     if (damagesource.getEntity() instanceof ServerPlayer) {
-                        CriteriaTriggers.PLAYER_HURT_ENTITY.trigger((ServerPlayer) damagesource.getEntity(), this, damagesource, f, originalDamage, true);
+                        CriteriaTriggers.PLAYER_HURT_ENTITY.trigger((ServerPlayer) damagesource.getEntity(), this, damagesource, originalDamage, f, true); // Paper - fix taken/dealt param order
                     }
 
-                    return banner$damageResult = false;
+                    return true;
                 } else {
-                    return banner$damageResult = originalDamage > 0;
+                    return true; // Paper - return false ONLY if event was cancelled
                 }
                 // CraftBukkit end
             }
         }
-        return banner$damageResult = false; // CraftBukkit
+        return true; // CraftBukkit // Paper - return false ONLY if event was cancelled
     }
 
     private transient EntityRegainHealthEvent.RegainReason banner$regainReason;
