@@ -327,43 +327,12 @@ public abstract class MixinServerPlayer extends Player implements InjectionServe
     @Inject(method = "startSleepInBed", at = @At("HEAD"), cancellable = true)
     private void banner$bedEvent(BlockPos blockPos, CallbackInfoReturnable<Either<BedSleepingProblem, Unit>> cir) {
         boolean force = bridge$startSleepInBed_force().getAndSet(false);
-        Either<Player.BedSleepingProblem, Unit> bedResult = null;
         Direction direction = this.level().getBlockState(blockPos).getValue(HorizontalDirectionalBlock.FACING);
-        if (!this.isSleeping() && this.isAlive()) {
-            if (!this.level().dimensionType().natural()) {
-                bedResult = Either.left(Player.BedSleepingProblem.NOT_POSSIBLE_HERE);
-            } else if (!this.bedInRange(blockPos, direction)) {
-                bedResult = Either.left(Player.BedSleepingProblem.TOO_FAR_AWAY);
-            } else if (this.bedBlocked(blockPos, direction)) {
-                bedResult = Either.left(Player.BedSleepingProblem.OBSTRUCTED);
-            } else {
-                this.setRespawnPosition(this.level().dimension(), blockPos, this.getYRot(), false, true);
-                if (this.level().isDay()) {
-                    bedResult = Either.left(Player.BedSleepingProblem.NOT_POSSIBLE_NOW);
-                } else {
-                    if (!this.isCreative()) {
-                        double d = 8.0;
-                        double e = 5.0;
-                        Vec3 vec3 = Vec3.atBottomCenterOf(blockPos);
-                        List<Monster> list = this.level().getEntitiesOfClass(Monster.class, new AABB(vec3.x() - 8.0, vec3.y() - 5.0, vec3.z() - 8.0, vec3.x() + 8.0, vec3.y() + 5.0, vec3.z() + 8.0), (monster) -> {
-                            return monster.isPreventingPlayerRest(this);
-                        });
-                        if (!list.isEmpty()) {
-                            cir.setReturnValue(Either.left(BedSleepingProblem.NOT_SAFE));
-                        }
-                    }
-
-                    if (bedResult == null) {
-                        bedResult = Either.right(Unit.INSTANCE);
-                    }
-                }
-            }
-        } else {
-            bedResult = Either.left(Player.BedSleepingProblem.OTHER_PROBLEM);
-        }
+        Either<Player.BedSleepingProblem, Unit> bedResult = this.getBedResult(blockPos, direction);
 
         if (bedResult.left().orElse(null) == Player.BedSleepingProblem.OTHER_PROBLEM) {
             cir.setReturnValue(bedResult); // return immediately if the result is not bypassable by plugins
+            return;
         }
 
         if (force) {
@@ -374,6 +343,7 @@ public abstract class MixinServerPlayer extends Player implements InjectionServe
 
         if (bedResult.left().isPresent()) {
             cir.setReturnValue(bedResult);
+            return;
         }
 
         Either<Player.BedSleepingProblem, Unit> either = super.startSleepInBed(blockPos).ifRight((unit) -> {
@@ -384,9 +354,8 @@ public abstract class MixinServerPlayer extends Player implements InjectionServe
             this.displayClientMessage(Component.translatable("sleep.not_possible"), true);
         }
 
-        ((ServerLevel) this.level()).updateSleepingPlayerList();
+        this.serverLevel().updateSleepingPlayerList();
         cir.setReturnValue(either);
-        cir.cancel();
     }
 
     @Inject(method = "setRespawnPosition", at = @At("HEAD"))
